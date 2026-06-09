@@ -50,7 +50,7 @@ class HWDevice:
 class KMBoxDevice(HWDevice):
     def __init__(self):
         self._ok = False
-    def connect(self, ip="192.168.2.188", port="8808", device_id="09847019", monitor_port=8888, **kw):
+    def connect(self, ip="192.168.2.188", port="8808", device_id="00000000", monitor_port=8888, **kw):
         if not KM_AVAILABLE:
             logging.error("kmNet not installed. Run: pip install kmNet")
             return False
