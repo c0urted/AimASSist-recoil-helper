@@ -1,0 +1,27 @@
+{
+    "recoil_module_enabled": false,
+    "burst_module_enabled": true,
+    "recoil_trigger_key": "Mouse 5",
+    "burst_trigger_key": "Left Click",
+    "toggle_key": "/",
+    "local_sens": 22.0,
+    "local_zoom_mult": 0.75,
+    "local_fov": 100,
+    "recoil_scale_x": 1.0,
+    "recoil_scale_y": 1.0,
+    "recoil_jitter": 0.05000000074505806,
+    "time_step_interval": 0.15000000596046448,
+    "overlay_mode": "None",
+    "recoil_nodes": [
+        [
+            0.0,
+            0.0,
+            0.0
+        ]
+    ],
+    "burst_count": 3,
+    "burst_y_pull": 23.0,
+    "burst_x_pull": 0.0,
+    "burst_intra_delay_ms": 60.0,
+    "burst_inter_delay_ms": 275.0
+}
