@@ -238,8 +238,8 @@ DEFAULT_STATE = {
     "burst_ks_key":       "None",
     "toggle_key":         "/",
 
-    "local_sens":       22.0,
-    "local_zoom_mult":  0.75,
+    "local_sens":       20.0,
+    "local_zoom_mult":  1.00,
     "local_fov":        100,
 
     "recoil_nodes":       [[0.0, 0.0, 0.0]],
@@ -610,115 +610,367 @@ def hardware_consumer_engine(data_mailbox):
         except Exception as exc:
             logging.debug(f"HW thread exception: {exc}")
 
-# ---------------------------------------------------------------------------
-# CANVAS  — node placement, drag, right-click delete
-# ---------------------------------------------------------------------------
-CANVAS_W, CANVAS_H = 580, 235
-CANVAS_CX, CANVAS_CY = CANVAS_W // 2, 35   # origin crosshair position
-NODE_HIT_RADIUS = 12   # px
 
-_drag = {"active": False, "idx": -1, "last": None}
+# ---------------------------------------------------------------------------
+# CANVAS — auto-zoom, node placement, drag, right-click delete
+# ---------------------------------------------------------------------------
+CANVAS_W, CANVAS_H = 590, 340
+CANVAS_PAD = 35
+NODE_HIT_RADIUS = 14
 
-def _node_screen_pts():
-    """Compute canvas screen positions for all nodes (cumulative offsets)."""
+_drag = {"active": False, "idx": -1, "last": None, "scale": 1.0}
+_canvas_cache = {"pts": [], "scale": 1.0, "origin": (CANVAS_W // 2, 40)}
+_selected_idx = -1
+_user_zoom = 1.0   # multiplier on top of auto-fit
+
+
+def _compute_canvas_layout():
+    """Auto-zoom: compute screen positions for all nodes to fit the canvas."""
     nodes = DEFAULT_STATE["recoil_nodes"]
-    pts = []; cx, cy = CANVAS_CX, CANVAS_CY
+    empty = len(nodes) <= 1 and nodes[0][1] == 0.0 and nodes[0][2] == 0.0
+    fallback_origin = (CANVAS_W // 2, CANVAS_PAD + 10)
+    if not nodes or empty:
+        _canvas_cache.update(pts=[], scale=1.0, origin=fallback_origin)
+        return [], 1.0, fallback_origin
+
+    cum_x, cum_y = [0.0], [0.0]
     for n in nodes:
-        cx = max(5, min(CANVAS_W - 5, cx + int(n[1] * 5.0)))
-        cy = max(5, min(CANVAS_H - 5, cy + int(n[2] * 5.0)))
-        pts.append((cx, cy))
-    return pts
+        cum_x.append(cum_x[-1] + n[1])
+        cum_y.append(cum_y[-1] + n[2])
+
+    min_x, max_x = min(cum_x), max(cum_x)
+    min_y, max_y = min(cum_y), max(cum_y)
+    range_x = max(max_x - min_x, 0.3)
+    range_y = max(max_y - min_y, 0.3)
+    usable_w = CANVAS_W - 2 * CANVAS_PAD
+    usable_h = CANVAS_H - 2 * CANVAS_PAD
+    scale = min(usable_w / range_x, usable_h / range_y) * _user_zoom
+    pattern_w = range_x * scale
+    pattern_h = range_y * scale
+    offset_x = CANVAS_PAD + (usable_w - pattern_w) / 2
+    offset_y = CANVAS_PAD + (usable_h - pattern_h) / 2
+    ox = offset_x + (-min_x) * scale
+    oy = offset_y + (-min_y) * scale
+
+    pts = []
+    for i in range(len(nodes)):
+        sx = int(ox + cum_x[i + 1] * scale)
+        sy = int(oy + cum_y[i + 1] * scale)
+        sx = max(4, min(CANVAS_W - 4, sx))
+        sy = max(4, min(CANVAS_H - 4, sy))
+        pts.append((sx, sy))
+
+    origin = (int(ox), int(oy))
+    _canvas_cache.update(pts=pts, scale=scale, origin=origin)
+    return pts, scale, origin
+
 
 def _find_node_near(canvas_pos):
     mx, my = canvas_pos
-    for i, (px, py) in enumerate(_node_screen_pts()):
+    pts = _canvas_cache["pts"]
+    for i, (px, py) in enumerate(pts):
         if (mx - px) ** 2 + (my - py) ** 2 < NODE_HIT_RADIUS ** 2:
             return i
     return -1
 
+
 def _recalc_node_times():
     iv = dpg.get_value("ui_time_interval")
     for i, n in enumerate(DEFAULT_STATE["recoil_nodes"]):
-        n[0] = i * iv
+        n[0] = round(i * iv, 4)
+
+
+def _update_node_info():
+    nodes = DEFAULT_STATE["recoil_nodes"]
+    count = len(nodes)
+    if not dpg.does_item_exist("ui_node_count_text"):
+        return
+    if count <= 1 and nodes[0][1] == 0.0 and nodes[0][2] == 0.0:
+        dpg.set_value("ui_node_count_text", "Empty \u2014 click canvas or import a .txt")
+        return
+    iv = dpg.get_value("ui_time_interval") or 0.1
+    duration = count * iv
+    total_x = sum(n[1] for n in nodes)
+    total_y = sum(n[2] for n in nodes)
+    dpg.set_value("ui_node_count_text",
+                  f"{count} nodes  |  {duration:.2f}s  |  drift X {total_x:+.1f}  Y {total_y:+.1f}")
+
+
+def _screen_to_logical(sx, sy):
+    origin = _canvas_cache["origin"]
+    scale = _canvas_cache["scale"]
+    if scale < 0.001:
+        return 0.0, 0.0
+    return (sx - origin[0]) / scale, (sy - origin[1]) / scale
+
+
+def _update_selected_ui():
+    """Update the selected node editor fields."""
+    global _selected_idx
+    nodes = DEFAULT_STATE["recoil_nodes"]
+    if _selected_idx < 0 or _selected_idx >= len(nodes):
+        _selected_idx = -1
+    if not dpg.does_item_exist("ui_sel_label"):
+        return
+    if _selected_idx < 0:
+        dpg.set_value("ui_sel_label", "No selection")
+        dpg.configure_item("ui_sel_label", color=(55, 55, 70))
+        if dpg.does_item_exist("ui_sel_vx"):
+            dpg.set_value("ui_sel_vx", 0.0)
+            dpg.set_value("ui_sel_vy", 0.0)
+    else:
+        n = nodes[_selected_idx]
+        dpg.set_value("ui_sel_label", f"Node #{_selected_idx + 1}/{len(nodes)}")
+        dpg.configure_item("ui_sel_label", color=(0, 200, 120))
+        if dpg.does_item_exist("ui_sel_vx"):
+            dpg.set_value("ui_sel_vx", n[1])
+            dpg.set_value("ui_sel_vy", n[2])
+
+
+def callback_edit_sel_vx(sender, app_data):
+    global _selected_idx
+    nodes = DEFAULT_STATE["recoil_nodes"]
+    if 0 <= _selected_idx < len(nodes):
+        nodes[_selected_idx][1] = app_data
+        redraw_recoil_canvas()
+        _update_node_info()
+
+
+def callback_edit_sel_vy(sender, app_data):
+    global _selected_idx
+    nodes = DEFAULT_STATE["recoil_nodes"]
+    if 0 <= _selected_idx < len(nodes):
+        nodes[_selected_idx][2] = app_data
+        redraw_recoil_canvas()
+        _update_node_info()
+
+
+def callback_delete_selected(sender, app_data):
+    global _selected_idx
+    nodes = DEFAULT_STATE["recoil_nodes"]
+    if _selected_idx < 0 or _selected_idx >= len(nodes) or len(nodes) <= 1:
+        return
+    nodes.pop(_selected_idx)
+    _recalc_node_times()
+    if _selected_idx >= len(nodes):
+        _selected_idx = len(nodes) - 1
+    redraw_recoil_canvas()
+    _update_node_info()
+    _update_selected_ui()
+
+
+def callback_zoom_in(sender, app_data):
+    global _user_zoom
+    _user_zoom = min(_user_zoom * 1.4, 20.0)
+    redraw_recoil_canvas()
+
+
+def callback_zoom_out(sender, app_data):
+    global _user_zoom
+    _user_zoom = max(_user_zoom / 1.4, 0.1)
+    redraw_recoil_canvas()
+
+
+def callback_zoom_fit(sender, app_data):
+    global _user_zoom
+    _user_zoom = 1.0
+    redraw_recoil_canvas()
+
 
 def callback_canvas_left_click(sender, app_data):
+    global _selected_idx
     pos = dpg.get_drawing_mouse_pos()
     idx = _find_node_near(pos)
     if idx >= 0:
-        _drag.update({"active": True, "idx": idx, "last": pos})
+        # Click on node = select it + start drag
+        _selected_idx = idx
+        _drag.update(active=True, idx=idx, last=pos, scale=_canvas_cache["scale"])
+        redraw_recoil_canvas()
+        _update_selected_ui()
         return
-    # No node hit — add new node
-    rx = float(pos[0] - CANVAS_CX) / 5.0
-    ry = float(pos[1] - CANVAS_CY) / 5.0
-    n  = DEFAULT_STATE["recoil_nodes"]
+    # Click on empty = add node
+    lx, ly = _screen_to_logical(pos[0], pos[1])
+    nodes = DEFAULT_STATE["recoil_nodes"]
+    cum_x = sum(n[1] for n in nodes)
+    cum_y = sum(n[2] for n in nodes)
+    dx = lx - cum_x
+    dy = ly - cum_y
     iv = dpg.get_value("ui_time_interval")
-    if len(n) == 1 and n[0][1] == 0.0 and n[0][2] == 0.0:
-        DEFAULT_STATE["recoil_nodes"] = [[0.0, rx, ry]]
+    if len(nodes) == 1 and nodes[0][1] == 0.0 and nodes[0][2] == 0.0:
+        DEFAULT_STATE["recoil_nodes"] = [[0.0, dx, dy]]
+        _selected_idx = 0
     else:
-        DEFAULT_STATE["recoil_nodes"].append([len(n) * iv, rx, ry])
+        DEFAULT_STATE["recoil_nodes"].append([round(len(nodes) * iv, 4), dx, dy])
+        _selected_idx = len(DEFAULT_STATE["recoil_nodes"]) - 1
     redraw_recoil_canvas()
-    dpg.set_value("ui_node_count_text", f"Registered Profile Nodes: {len(DEFAULT_STATE['recoil_nodes'])}")
+    _update_node_info()
+    _update_selected_ui()
+
 
 def callback_canvas_right_click(sender, app_data):
-    """Right-click a node to delete it."""
+    """Right-click on node = select it (without adding)."""
+    global _selected_idx
     pos = dpg.get_drawing_mouse_pos()
     idx = _find_node_near(pos)
-    if idx < 0 or len(DEFAULT_STATE["recoil_nodes"]) <= 1: return
-    DEFAULT_STATE["recoil_nodes"].pop(idx)
-    _recalc_node_times()
+    if idx >= 0:
+        _selected_idx = idx
+    else:
+        _selected_idx = -1
     redraw_recoil_canvas()
-    dpg.set_value("ui_node_count_text", f"Registered Profile Nodes: {len(DEFAULT_STATE['recoil_nodes'])}")
+    _update_selected_ui()
+
 
 def callback_global_mouse_move(sender, app_data):
-    """Viewport-level handler — drives node drag without needing mouse on canvas."""
-    if not _drag["active"]: return
+    if not _drag["active"]:
+        return
     if not dpg.is_mouse_button_down(0):
-        _drag.update({"active": False, "idx": -1, "last": None})
+        _drag.update(active=False, idx=-1, last=None)
         return
     curr = dpg.get_mouse_pos(local=False)
     last = _drag["last"]
     if last is None:
-        _drag["last"] = curr; return
-    # Delta in screen pixels → node space (divide by 5, same ratio used when placing)
-    dx = (curr[0] - last[0]) / 5.0
-    dy = (curr[1] - last[1]) / 5.0
-    if abs(dx) > 0.01 or abs(dy) > 0.01:
-        idx   = _drag["idx"]
+        _drag["last"] = curr
+        return
+    scale = _drag.get("scale", 1.0)
+    if scale < 0.001:
+        _drag["last"] = curr
+        return
+    dx = (curr[0] - last[0]) / scale
+    dy = (curr[1] - last[1]) / scale
+    if abs(dx) > 0.001 or abs(dy) > 0.001:
+        idx = _drag["idx"]
         nodes = DEFAULT_STATE["recoil_nodes"]
         if 0 <= idx < len(nodes):
             nodes[idx][1] += dx
             nodes[idx][2] += dy
             redraw_recoil_canvas()
+            _update_selected_ui()
     _drag["last"] = curr
 
+
 def callback_global_mouse_release(sender, app_data):
-    _drag.update({"active": False, "idx": -1, "last": None})
+    _drag.update(active=False, idx=-1, last=None)
+
 
 def callback_clear_nodes(sender, app_data):
+    global _selected_idx
+    _selected_idx = -1
     DEFAULT_STATE["recoil_nodes"] = [[0.0, 0.0, 0.0]]
     redraw_recoil_canvas()
-    dpg.set_value("ui_node_count_text", "Registered Profile Nodes: 1 (Baseline)")
+    _update_node_info()
+    _update_selected_ui()
+
 
 def callback_toggle_overlay(sender, app_data):
     redraw_recoil_canvas()
 
+
 def redraw_recoil_canvas():
-    if not dpg.does_item_exist("recoil_canvas"): return
+    if not dpg.does_item_exist("recoil_canvas"):
+        return
     dpg.delete_item("recoil_canvas", children_only=True)
-    w, h = CANVAS_W, 360
-    if dpg.get_value("ui_overlay_combo") == "Load recoil_bg.png" and dpg.does_item_exist("texture_recoil_background"):
-        dpg.draw_image("texture_recoil_background", (0, 0), (w, h), parent="recoil_canvas")
-    dpg.draw_line((CANVAS_CX, 0), (CANVAS_CX, h), color=(50, 50, 65, 255), thickness=1, parent="recoil_canvas")
-    dpg.draw_line((0, CANVAS_CY), (w, CANVAS_CY), color=(50, 50, 65, 255), thickness=1, parent="recoil_canvas")
+    w, h = CANVAS_W, CANVAS_H
+
+    if dpg.does_item_exist("ui_overlay_combo"):
+        if dpg.get_value("ui_overlay_combo") == "Load recoil_bg.png" \
+                and dpg.does_item_exist("texture_recoil_background"):
+            dpg.draw_image("texture_recoil_background", (0, 0), (w, h),
+                           parent="recoil_canvas")
+
+    grid_step = 40
+    for gx in range(0, w + 1, grid_step):
+        dpg.draw_line((gx, 0), (gx, h), color=(18, 18, 24, 255),
+                      thickness=1, parent="recoil_canvas")
+    for gy in range(0, h + 1, grid_step):
+        dpg.draw_line((0, gy), (w, gy), color=(18, 18, 24, 255),
+                      thickness=1, parent="recoil_canvas")
+
+    pts, scale, origin = _compute_canvas_layout()
+
+    ox, oy = origin
+    dpg.draw_line((ox, 0), (ox, h), color=(40, 40, 56, 255),
+                  thickness=1, parent="recoil_canvas")
+    dpg.draw_line((0, oy), (w, oy), color=(40, 40, 56, 255),
+                  thickness=1, parent="recoil_canvas")
+    dpg.draw_circle((ox, oy), 4, color=(60, 60, 80, 255),
+                    fill=(60, 60, 80, 255), parent="recoil_canvas")
+    dpg.draw_text((ox + 6, oy - 14), "origin", size=11,
+                  color=(55, 55, 70), parent="recoil_canvas")
+
     nodes = DEFAULT_STATE["recoil_nodes"]
-    if len(nodes) <= 1 and nodes[0][1] == 0.0 and nodes[0][2] == 0.0: return
-    pts = _node_screen_pts()
+    if not pts:
+        dpg.draw_text((w // 2 - 80, h // 2 - 6),
+                      "Click to place nodes", size=14,
+                      color=(50, 50, 65), parent="recoil_canvas")
+        return
+
     for i in range(len(pts) - 1):
-        dpg.draw_line(pts[i], pts[i+1], color=(147, 51, 234, 255), thickness=3, parent="recoil_canvas")
-        dpg.draw_circle(pts[i], 5, color=(0, 191, 255, 255), fill=(0, 191, 255, 255), parent="recoil_canvas")
-        dpg.draw_text((pts[i][0]+8, pts[i][1]-8), f"#{i+1}", size=13, color=(200, 200, 200), parent="recoil_canvas")
-    dpg.draw_circle(pts[-1], 5, color=(0, 191, 255, 255), fill=(0, 191, 255, 255), parent="recoil_canvas")
-    dpg.draw_text((pts[-1][0]+8, pts[-1][1]-8), f"#{len(pts)}", size=13, color=(200, 200, 200), parent="recoil_canvas")
+        dpg.draw_line(pts[i], pts[i + 1], color=(110, 40, 200, 255),
+                      thickness=2, parent="recoil_canvas")
+
+    for i, (px, py) in enumerate(pts):
+        if i == 0:
+            col = (0, 200, 120, 255)
+        elif i == len(pts) - 1:
+            col = (240, 70, 70, 255)
+        else:
+            col = (0, 170, 235, 255)
+        dpg.draw_circle((px, py), 5, color=col, fill=col,
+                        parent="recoil_canvas")
+        # Selection ring
+        if i == _selected_idx:
+            dpg.draw_circle((px, py), 10, color=(255, 220, 40, 255),
+                            thickness=2, parent="recoil_canvas")
+        label_every = max(1, len(pts) // 20)
+        if i % label_every == 0 or i == len(pts) - 1 or i == 0 or i == _selected_idx:
+            n = nodes[i]
+            lbl = f"#{i+1} ({n[1]:+.2f}, {n[2]:+.2f})"
+            lx_off = 8 if (i % 2 == 0) else -len(lbl) * 6
+            dpg.draw_text((px + lx_off, py - 14), lbl, size=11,
+                          color=(160, 160, 175), parent="recoil_canvas")
+
+    dpg.draw_text((w - 120, h - 16), f"zoom: {scale:.0f} px/unit",
+                  size=11, color=(50, 50, 65), parent="recoil_canvas")
+
+
+# ---------------------------------------------------------------------------
+# PATTERN IMPORT (.txt — Lew29 / mgsweet format)
+# ---------------------------------------------------------------------------
+def callback_import_pattern_btn(sender, app_data):
+    dpg.show_item("import_file_dialog")
+
+def callback_import_file_ok(sender, app_data):
+    selections = app_data.get("selections", {})
+    if not selections:
+        return
+    filepath = list(selections.values())[0]
+    try:
+        raw_nodes = []
+        with open(filepath) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                cleaned = line.replace('. ', ', ')
+                parts = [p.strip() for p in cleaned.split(',')]
+                if len(parts) >= 2:
+                    x, y = float(parts[0]), float(parts[1])
+                    raw_nodes.append((x, y))
+        if not raw_nodes:
+            logging.warning("Import: no valid nodes found")
+            return
+        iv = dpg.get_value("ui_time_interval")
+        recoil_nodes = [[round(i * iv, 4), x, y] for i, (x, y) in enumerate(raw_nodes)]
+        DEFAULT_STATE["recoil_nodes"] = recoil_nodes
+        redraw_recoil_canvas()
+        _update_node_info()
+        logging.info(f"Imported {len(raw_nodes)} nodes from {os.path.basename(filepath)}")
+    except Exception as e:
+        logging.error(f"Import failed: {e}")
+
+def callback_import_file_cancel(sender, app_data):
+    pass
+
 
 def redraw_burst_canvas():
     if not dpg.does_item_exist("burst_canvas"): return
@@ -738,13 +990,17 @@ def redraw_burst_canvas():
     for i in range(len(pts) - 1):
         dpg.draw_line(pts[i], pts[i+1], color=(0, 191, 255, 255), thickness=2, parent="burst_canvas")
         dpg.draw_circle(pts[i], 4, color=(147, 51, 234, 255), fill=(147, 51, 234, 255), parent="burst_canvas")
-    dpg.draw_circle(pts[-1], 4, color=(147, 51, 234, 255), fill=(147, 51, 234, 255), parent="burst_canvas")
+    if pts:
+        dpg.draw_circle(pts[-1], 4, color=(147, 51, 234, 255), fill=(147, 51, 234, 255), parent="burst_canvas")
+
 
 def ui_thread_push_sync(sender, app_data, user_data):
     try: DATA_QUEUE.put_nowait({user_data: app_data})
     except queue.Full: pass
     if user_data in ["burst_count", "burst_y_pull", "burst_x_pull"]:
         redraw_burst_canvas()
+    if user_data == "time_step_interval":
+        _recalc_node_times()
 
 # ---------------------------------------------------------------------------
 # DEVICE UI CALLBACKS
@@ -875,68 +1131,111 @@ def build_tactical_surface():
 
                 # ── RECOIL TAB ──────────────────────────────────────────
                 with dpg.child_window(tag="panel_recoil", width=-1, height=-1, border=False):
-                    dpg.add_text("Visual Profile Tracking & Vector Canvas Engine", color=(145, 55, 240))
+                    dpg.add_text("Recoil Workspace", color=(145, 55, 240))
                     dpg.add_separator()
 
                     with dpg.group(horizontal=True):
                         with dpg.group():
-                            dpg.add_text("Trigger Key:", color=(140, 140, 150))
+                            dpg.add_text("Trigger:", color=(88, 88, 108))
                             dpg.add_combo(["Mouse 5", "Mouse 4", "Left Click"],
-                                          default_value="Mouse 5", tag="ui_recoil_trigger_combo", width=120,
-                                          callback=ui_thread_push_sync, user_data="recoil_trigger_key")
-                            dpg.add_checkbox(label="Latch Mode — arm once, fire until pressed again",
-                                             tag="ui_recoil_is_toggle",
-                                             callback=ui_thread_push_sync, user_data="recoil_is_toggle")
-                        dpg.add_spacer(width=30)
+                                          default_value="Mouse 5", tag="ui_recoil_trigger_combo",
+                                          width=110, callback=ui_thread_push_sync,
+                                          user_data="recoil_trigger_key")
+                            dpg.add_checkbox(label="Latch mode", tag="ui_recoil_is_toggle",
+                                             callback=ui_thread_push_sync,
+                                             user_data="recoil_is_toggle")
+                        dpg.add_spacer(width=14)
                         with dpg.group():
-                            dpg.add_text("Module KS Key:", color=(140, 140, 150))
+                            dpg.add_text("KS key:", color=(88, 88, 108))
                             dpg.add_combo(KS_KEY_OPTIONS, default_value="None",
-                                          tag="ui_recoil_ks_key", width=120,
-                                          callback=ui_thread_push_sync, user_data="recoil_ks_key")
-                            dpg.add_text("Press to toggle Recoil ON/OFF", color=(100, 100, 110))
-                            dpg.add_spacer(height=4)
-                            dpg.add_checkbox(label="Require ADS (Right Click) to Fire",
-                                             tag="ui_recoil_req_ads",
-                                             callback=ui_thread_push_sync, user_data="recoil_require_ads")
+                                          tag="ui_recoil_ks_key", width=110,
+                                          callback=ui_thread_push_sync,
+                                          user_data="recoil_ks_key")
+                            dpg.add_checkbox(label="Require ADS", tag="ui_recoil_req_ads",
+                                             callback=ui_thread_push_sync,
+                                             user_data="recoil_require_ads")
+                        dpg.add_spacer(width=14)
+                        with dpg.group():
+                            dpg.add_text("Scale:", color=(88, 88, 108))
+                            dpg.add_slider_float(label="X", default_value=1.0,
+                                                 min_value=0.0, max_value=5.0,
+                                                 tag="ui_recoil_scale_x", width=100,
+                                                 callback=ui_thread_push_sync,
+                                                 user_data="recoil_scale_x")
+                            dpg.add_slider_float(label="Y", default_value=1.0,
+                                                 min_value=0.0, max_value=5.0,
+                                                 tag="ui_recoil_scale_y", width=100,
+                                                 callback=ui_thread_push_sync,
+                                                 user_data="recoil_scale_y")
+                        dpg.add_spacer(width=14)
+                        with dpg.group():
+                            dpg.add_text("Jitter:", color=(88, 88, 108))
+                            dpg.add_slider_float(label="", default_value=0.05,
+                                                 min_value=0.0, max_value=2.0,
+                                                 tag="ui_recoil_jitter", width=100,
+                                                 callback=ui_thread_push_sync,
+                                                 user_data="recoil_jitter")
 
-                    dpg.add_spacer(height=8)
-                    dpg.add_text("Left-click canvas to add nodes  •  Left-drag to reposition  •  Right-click to delete",
-                                 color=(80, 80, 95))
+                    dpg.add_spacer(height=4)
+
                     with dpg.group(horizontal=True):
-                        dpg.add_slider_float(label="Shot Interval (s)", default_value=0.15,
-                                             min_value=0.04, max_value=0.40,
-                                             tag="ui_time_interval", width=130,
-                                             callback=ui_thread_push_sync, user_data="time_step_interval")
-                        dpg.add_button(label="Reset Grid Trace", callback=callback_clear_nodes)
-
-                    dpg.add_spacer(height=5)
-                    with dpg.child_window(width=595, height=250, border=True):
-                        dpg.add_drawlist(width=580, height=235, tag="recoil_canvas")
-                        with dpg.item_handler_registry(tag="canvas_handler"):
-                            dpg.add_item_clicked_handler(button=0, callback=callback_canvas_left_click)
-                            dpg.add_item_clicked_handler(button=1, callback=callback_canvas_right_click)
-                        dpg.bind_item_handler_registry("recoil_canvas", "canvas_handler")
-
-                    with dpg.group(horizontal=True):
-                        dpg.add_text("Registered Profile Nodes: 1 (Baseline)", tag="ui_node_count_text", color=(0, 191, 255))
-                        dpg.add_spacer(width=10)
-                        dpg.add_combo(["None", "Load recoil_bg.png"], default_value="None",
-                                      label="Background", tag="ui_overlay_combo", width=160,
+                        dpg.add_slider_float(label="Interval (s)", default_value=0.15,
+                                             min_value=0.02, max_value=0.40,
+                                             tag="ui_time_interval", width=120,
+                                             callback=ui_thread_push_sync,
+                                             user_data="time_step_interval")
+                        dpg.add_spacer(width=6)
+                        dpg.add_button(label="Clear", width=50,
+                                       callback=callback_clear_nodes)
+                        dpg.add_spacer(width=6)
+                        dpg.add_button(label="Import .txt", width=78,
+                                       callback=callback_import_pattern_btn)
+                        dpg.add_spacer(width=6)
+                        dpg.add_combo(["None", "Load recoil_bg.png"],
+                                      default_value="None", label="BG",
+                                      tag="ui_overlay_combo", width=145,
                                       callback=callback_toggle_overlay)
 
-                    dpg.add_spacer(height=5)
+                    dpg.add_spacer(height=3)
+                    dpg.add_text("L-click: add/select  |  Drag: move  |  R-click: select",
+                                 color=(42, 42, 58))
+                    dpg.add_spacer(height=3)
+
+                    with dpg.child_window(width=606, height=358, border=True):
+                        dpg.add_drawlist(width=590, height=340, tag="recoil_canvas")
+                        with dpg.item_handler_registry(tag="canvas_handler"):
+                            dpg.add_item_clicked_handler(button=0,
+                                                         callback=callback_canvas_left_click)
+                            dpg.add_item_clicked_handler(button=1,
+                                                         callback=callback_canvas_right_click)
+                        dpg.bind_item_handler_registry("recoil_canvas", "canvas_handler")
+
+                    # ── Node editor + info row ────────────────────────
                     with dpg.group(horizontal=True):
-                        with dpg.group():
-                            dpg.add_slider_float(label="Scale (X)", default_value=1.0, min_value=0.0, max_value=5.0,
-                                                 tag="ui_recoil_scale_x", width=160,
-                                                 callback=ui_thread_push_sync, user_data="recoil_scale_x")
-                            dpg.add_slider_float(label="Scale (Y)", default_value=1.0, min_value=0.0, max_value=5.0,
-                                                 tag="ui_recoil_scale_y", width=160,
-                                                 callback=ui_thread_push_sync, user_data="recoil_scale_y")
-                        with dpg.group():
-                            dpg.add_slider_float(label="Gaussian Jitter", default_value=0.05, min_value=0.0, max_value=2.0,
-                                                 tag="ui_recoil_jitter", width=160,
-                                                 callback=ui_thread_push_sync, user_data="recoil_jitter")
+                        dpg.add_text("Empty — click canvas or import a .txt",
+                                     tag="ui_node_count_text", color=(48, 120, 175))
+
+                    dpg.add_spacer(height=4)
+
+                    with dpg.group(horizontal=True):
+                        # Selected node editor
+                        dpg.add_text("No selection", tag="ui_sel_label", color=(55, 55, 70))
+                        dpg.add_spacer(width=10)
+                        dpg.add_text("vx:", color=(62, 62, 80))
+                        dpg.add_input_float(tag="ui_sel_vx", default_value=0.0, width=75,
+                                            step=0.05, callback=callback_edit_sel_vx)
+                        dpg.add_spacer(width=6)
+                        dpg.add_text("vy:", color=(62, 62, 80))
+                        dpg.add_input_float(tag="ui_sel_vy", default_value=0.0, width=75,
+                                            step=0.05, callback=callback_edit_sel_vy)
+                        dpg.add_spacer(width=10)
+                        dpg.add_button(label="Delete node", width=78,
+                                       callback=callback_delete_selected)
+                        dpg.add_spacer(width=20)
+                        # Zoom controls
+                        dpg.add_button(label="-", width=24, callback=callback_zoom_out)
+                        dpg.add_button(label="Fit", width=32, callback=callback_zoom_fit)
+                        dpg.add_button(label="+", width=24, callback=callback_zoom_in)
 
                 # ── BURST TAB ───────────────────────────────────────────
                 with dpg.child_window(tag="panel_burst", width=-1, height=-1, border=False):
@@ -1096,6 +1395,15 @@ def build_tactical_surface():
         dpg.add_mouse_move_handler(callback=callback_global_mouse_move)
         dpg.add_mouse_release_handler(button=0, callback=callback_global_mouse_release)
 
+
+    # File dialog for .txt pattern import
+    with dpg.file_dialog(directory_selector=False, show=False,
+                         callback=callback_import_file_ok,
+                         cancel_callback=callback_import_file_cancel,
+                         tag="import_file_dialog", width=500, height=400):
+        dpg.add_file_extension(".txt", color=(0, 200, 120, 255))
+        dpg.add_file_extension(".*")
+
     dpg.setup_dearpygui()
     dpg.show_viewport()
 
@@ -1107,6 +1415,7 @@ def build_tactical_surface():
     threading.Thread(target=hardware_consumer_engine, args=(DATA_QUEUE,), daemon=True).start()
 
     redraw_recoil_canvas()
+    _update_node_info()
     redraw_burst_canvas()
 
     while dpg.is_dearpygui_running():

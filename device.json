@@ -1,0 +1,9 @@
+{
+    "device_type": "KMBox",
+    "kmbox_ip": "192.168.2.188",
+    "kmbox_port": "8808",
+    "kmbox_id": "00000000",
+    "kmbox_monitor": 8888,
+    "makcu_com": "COM3",
+    "makcu_baud": 115200
+}

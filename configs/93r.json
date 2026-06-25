@@ -1,11 +1,17 @@
 {
     "recoil_module_enabled": false,
-    "burst_module_enabled": true,
+    "burst_module_enabled": false,
     "recoil_trigger_key": "Mouse 5",
     "burst_trigger_key": "Left Click",
+    "recoil_require_ads": true,
+    "burst_require_ads": true,
+    "recoil_is_toggle": false,
+    "burst_is_toggle": false,
+    "recoil_ks_key": "None",
+    "burst_ks_key": "Mouse 4",
     "toggle_key": "/",
-    "local_sens": 22.0,
-    "local_zoom_mult": 0.75,
+    "local_sens": 20.0,
+    "local_zoom_mult": 1.00,
     "local_fov": 100,
     "recoil_scale_x": 1.0,
     "recoil_scale_y": 1.0,
@@ -23,5 +29,7 @@
     "burst_y_pull": 23.0,
     "burst_x_pull": 0.0,
     "burst_intra_delay_ms": 60.0,
-    "burst_inter_delay_ms": 275.0
+    "burst_inter_delay_ms": 275.0,
+    "hw_killswitch_enabled": false,
+    "hw_killswitch_key": "Mouse 5"
 }
