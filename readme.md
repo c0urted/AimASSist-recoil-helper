@@ -7,6 +7,9 @@ By offloading the entire execution environment, configuration tables, and input 
 Originally configured for the specific frame pacing and recoil mechanics of *The Finals*, the software layer is built using an open device abstraction layer, allowing seamless adaptability for any competitive first-person shooter environment.
 
 ---
+### GUI Design
+ [![Alt Text](images/GUI.png)]()
+
 
 ## Prerequisites & Initial Provisioning
 
@@ -23,6 +26,12 @@ pip install dearpygui keyboard
 To ensure proper workspace linkage, the native target link-layer module corresponding to your network hardware (`kmNet`) must reside directly within the immediate directory structure:
 
 ```
+|Recoil_processor| priv cuz im mean lol
+├── run_extractor.py # AiO tool for generating recoil patterns
+├── inputs/image.png
+├── outputs/weaponname_profile.txt
+
+|AimASSist|
 ├── configs/           # Serialized JSON configuration profiles
 ├── kmNet.pyd          # Native hardware interface abstraction binary
 └── master_control.py  # Primary runtime interface and worker engine
