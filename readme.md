@@ -69,8 +69,6 @@ To ensure proper workspace linkage, the native target link-layer module correspo
 
 ## Disclaimer and Liability
 
-## Disclaimer and Liability
-
 > [!WARNING]
 > This software is strictly for educational, research, and personal testing purposes.
 > 
