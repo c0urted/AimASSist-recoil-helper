@@ -67,6 +67,22 @@ To ensure proper workspace linkage, the native target link-layer module correspo
 3. **Sensor Field of View Boundaries** — Match the exact local rendering field-of-view configuration to optimize vector-to-pixel coefficient calculations.
 4. **Asynchronous Framework Killswitch** — Map a primary virtual key signature (e.g., `/`) to act as an immediate background safety override, instantly halting or waking all device input translation threads across both machines.
 
+## Notes
+> [!IMPORTANT]
+> **Anybrain Detection Vectors:** Modern competitive titles are shifting toward server-side AI profiling systems like Anybrain. Unlike traditional kernel-level anti-cheats that scan local system memory for cheat signatures, Anybrain operates entirely on the server side via game telemetry APIs.
+
+### How Behavioral AI Works
+
+* **Mouse Biometrics:** The AI processes raw mouse coordinates to analyze velocity, acceleration curves, and microscopic hand tremors. It looks for natural physiological fluctuations caused by human muscle fatigue or reaction lag.
+* **Keystroke Dynamics:** It monitors the exact millisecond hold-times of keys and the timing gaps between inputs to detect unnatural consistency.
+* **Pattern Profiling:** The platform establishes a baseline behavioral model for your account. If your mouse trajectories suddenly switch to mathematically rigid linear curves, the cloud engine flags the inputs as automated anomalies.
+
+### Impact on Hardware Emulation
+
+Using a Dual-PC setup or a physical KMBox completely hides your local code signature, but it does not protect your gameplay from server-side behavioral profiling. If your script inputs are too perfect or lack humanized smoothing filters, Anybrain will flag the account based entirely on the mechanical output sent to the server.
+
+---
+
 ## Disclaimer and Liability
 
 > [!WARNING]
