@@ -1046,11 +1046,32 @@ def callback_hw_ks_key(sender, app_data):
 # ---------------------------------------------------------------------------
 # MISC UI CALLBACKS
 # ---------------------------------------------------------------------------
+_TAB_INFO = {
+    "panel_recoil":   ("btn_tab_recoil",   "Recoil Workspace"),
+    "panel_burst":    ("btn_tab_burst",    "Burst Mode (93R)"),
+    "panel_settings": ("btn_tab_settings", "Settings Panel")
+}
+
 def ui_tab_navigation(sender, app_data, user_data):
-    for t in ["panel_recoil", "panel_burst", "panel_settings"]: dpg.hide_item(t)
+    # Hide all, show selected
+    for t in ["panel_recoil", "panel_burst", "panel_settings"]: 
+        dpg.hide_item(t)
     dpg.show_item(user_data)
+    
     name = {"panel_recoil": "Recoil", "panel_burst": "Burst", "panel_settings": "Settings"}[user_data]
     ui_thread_push_sync(None, name, "active_tab")
+
+    # Dynamic styling and text shifting (animation)
+    for panel, (btn_tag, base_label) in _TAB_INFO.items():
+        if dpg.does_item_exist(btn_tag):
+            if panel == user_data:
+                # Active tab: Bright purple text, subtle background, pushed left with an arrow
+                dpg.bind_item_theme(btn_tag, "theme_tab_active")
+                dpg.configure_item(btn_tag, label=f"   {base_label} ")
+            else:
+                # Inactive tab: Muted gray text, standard background, pushed right
+                dpg.bind_item_theme(btn_tag, "theme_tab_inactive")
+                dpg.configure_item(btn_tag, label=f"   {base_label} ")
 
 def callback_viewport_resize(sender, app_data):
     if dpg.does_item_exist("shell"):
@@ -1086,19 +1107,34 @@ def build_tactical_surface():
             dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing,    12.0, 10.0)
     dpg.bind_theme(gtheme)
 
+    # ── TAB ANIMATION THEMES ────────────────────────────────────────────
+    with dpg.theme(tag="theme_tab_active"):
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button, (45, 30, 65, 255))        # Deep purple backdrop
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (65, 45, 90, 255)) 
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (85, 60, 120, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Text, (190, 120, 255, 255))       # Glowing neon text
+            
+    with dpg.theme(tag="theme_tab_inactive"):
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button, (24, 24, 30, 255))        # Flat dark background
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (35, 35, 45, 255)) 
+            dpg.add_theme_color(dpg.mvThemeCol_Text, (140, 140, 150, 255))       # Muted gray text
+
     dpg.create_viewport(title="AimASSist Control Workspace", width=820, height=620, resizable=True)
 
-    with dpg.window(tag="shell", width=805, height=580, no_title_bar=True, no_scrollbar=True):
+    with dpg.window(tag="shell", no_title_bar=True, no_scrollbar=True, no_move=True, no_resize=True, no_bring_to_front_on_focus=True):
         with dpg.group(horizontal=True):
 
             # ── SIDEBAR ─────────────────────────────────────────────────
-            with dpg.child_window(width=160, height=-1, border=False):
+            with dpg.child_window(tag="sidebar_child", width=160, height=-1, border=False):
                 dpg.add_spacer(height=15)
                 dpg.add_text("  AimASSist", color=(145, 55, 240))
                 dpg.add_spacer(height=20)
-                dpg.add_button(label="  [x]  Recoil Workspace", width=145, height=35, callback=ui_tab_navigation, user_data="panel_recoil")
-                dpg.add_button(label="  [*]  Burst Mode (93R)", width=145, height=35, callback=ui_tab_navigation, user_data="panel_burst")
-                dpg.add_button(label="  [o]  Settings Panel",   width=145, height=35, callback=ui_tab_navigation, user_data="panel_settings")
+                dpg.add_button(tag="btn_tab_recoil",   width=145, height=35, callback=ui_tab_navigation, user_data="panel_recoil")
+                dpg.add_button(tag="btn_tab_burst",    width=145, height=35, callback=ui_tab_navigation, user_data="panel_burst")
+                dpg.add_button(tag="btn_tab_settings", width=145, height=35, callback=ui_tab_navigation, user_data="panel_settings")
+                
                 dpg.add_spacer(height=100)
                 dpg.add_separator()
                 dpg.add_text(" Mod links:")
@@ -1115,6 +1151,7 @@ def build_tactical_surface():
                 _dev_name  = DEVICE.name()
                 _dev_color = (0, 191, 255) if DEVICE.is_connected() else (140, 140, 150)
                 dpg.add_text(f"  {_dev_name}", tag="ui_device_sidebar", color=_dev_color)
+
 
             # ── MAIN PANELS ──────────────────────────────────────────────
             with dpg.group():
@@ -1410,13 +1447,18 @@ def build_tactical_surface():
     if sys.platform.startswith('win'):
         threading.Thread(target=_apply_dark_titlebar_worker, daemon=True).start()
 
-    dpg.set_viewport_resize_callback(callback_viewport_resize)
+    # ADD THIS LINE HERE TO ENGAGE THE PRIMARY WINDOW ENGINE:
+    dpg.set_primary_window("shell", True)
+
     threading.Thread(target=main_pc_keyboard_listener_worker, daemon=True).start()
     threading.Thread(target=hardware_consumer_engine, args=(DATA_QUEUE,), daemon=True).start()
 
     redraw_recoil_canvas()
     _update_node_info()
     redraw_burst_canvas()
+
+    # Apply the initial tab styling now that everything is built
+    ui_tab_navigation(None, None, "panel_recoil")
 
     while dpg.is_dearpygui_running():
         dpg.render_dearpygui_frame()
