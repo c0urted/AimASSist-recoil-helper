@@ -51,21 +51,22 @@ To ensure proper workspace linkage, the native target link-layer module correspo
 
 ### Vector Recoil Matrix
 
-- **Visual Trajectory Node Canvas** — Plot, test, and dynamically scale custom multi-node movement patterns directly onto the coordinate grid system. ADDING SOON
-- **Focal-Length Speed Scaling** — Real-time evaluation coefficients calculate field-of-view (FOV) shifts, normalizing translation speeds instantly the millisecond you transition into aim down sights (ADS).
-- **Target Constraint Verification** — Standalone validation toggles enforce strict runtime barriers, preventing macro activation unless target input thresholds are actively verified (e.g., ignoring pull vectors during hip-fire actions).
+- **Visual Trajectory Node Canvas** - Plot, test, and dynamically scale custom multi-node movement patterns directly onto the coordinate grid system. ADDING SOON
+- **Focal-Length Speed Scaling** - Real-time evaluation coefficients calculate field-of-view (FOV) shifts, normalizing translation speeds instantly the millisecond you transition into aim down sights (ADS).
+- **Target Constraint Verification** - Standalone validation toggles enforce strict runtime barriers, preventing macro activation unless target input thresholds are actively verified (e.g., ignoring pull vectors during hip-fire actions).
 
 ### Burst & Timing Module
 
-- **High-Precision Loop Tracking** — Leverages monotonic hardware reference counters (`time.perf_counter`) encapsulated inside unthrottled spin-locks to mirror target cycle behaviors perfectly (e.g., maintaining exact 60ms bullet spacing intervals).
-- **Flexible Input Activation Filters** — Features an edge-detection state engine allowing the operator to dynamically toggle between standard held-down trigger sequences and strict edge-triggered toggle regimes (Click-to-On / Click-to-Off).
+*   **High-Precision Timing** - Uses hardware-level reference counters (`time.perf_counter`) to hit exact timing cycles, ensuring perfect intervals (like an exact 60ms delay between burst-fire bullets) without skipping a beat.
+*   **Flexible Trigger Modes** - Swap between standard "hold-to-fire" mechanics or a "click-to-toggle" mode (click once to start firing, click again to stop).
 
 ### Calibration & Variable Parameters
 
-1. **Base Hardware Calibration Field** — Assign your absolute engine sensitivity value directly into the structural parameter block.
-2. **Focal Multiplier Scale** — Define the corresponding magnification adjustment ratio. For engines utilizing a 75% zoom sensitivity balance, input an absolute parameter of `0.75`.
-3. **Sensor Field of View Boundaries** — Match the exact local rendering field-of-view configuration to optimize vector-to-pixel coefficient calculations.
-4. **Asynchronous Framework Killswitch** — Map a primary virtual key signature (e.g., `/`) to act as an immediate background safety override, instantly halting or waking all device input translation threads across both machines.
+1.  **In-Game Sensitivity** - Enter your exact hip-fire sensitivity so the script maps its pixel movements correctly.
+2.  **ADS Zoom Multiplier** - Define your zoom ratio. If your in-game ADS sensitivity is set to 75%, simply input `0.75`.
+3.  **Field of View (FOV)** - Match your in-game FOV to ensure the translation math remains perfectly accurate.
+4.  **Hardware Killswitch** - Map a mouse button (e.g., `Mouse 5`) to instantly kill or wake the device's hardware inputs.
+5.  **Panic Key** - Map a local keyboard hotkey (e.g., `/`, foot pedals, a controller paddle etc) as a background safety override to instantly pause the entire framework across the dual-PC setup.
 
 ## Notes
 > [!IMPORTANT]

@@ -935,6 +935,8 @@ def redraw_recoil_canvas():
 
 # ---------------------------------------------------------------------------
 # PATTERN IMPORT (.txt — Lew29 / mgsweet format)
+# works for taking screenshots and converting them to cords
+# use Recoil_processor/run_extractor.py for patterns
 # ---------------------------------------------------------------------------
 def callback_import_pattern_btn(sender, app_data):
     dpg.show_item("import_file_dialog")
@@ -1065,11 +1067,11 @@ def ui_tab_navigation(sender, app_data, user_data):
     for panel, (btn_tag, base_label) in _TAB_INFO.items():
         if dpg.does_item_exist(btn_tag):
             if panel == user_data:
-                # Active tab: Bright purple text, subtle background, pushed left with an arrow
+                # Active tab: Bright purple text, subtle background
                 dpg.bind_item_theme(btn_tag, "theme_tab_active")
                 dpg.configure_item(btn_tag, label=f"   {base_label} ")
             else:
-                # Inactive tab: Muted gray text, standard background, pushed right
+                # Inactive tab: Muted gray text, standard background
                 dpg.bind_item_theme(btn_tag, "theme_tab_inactive")
                 dpg.configure_item(btn_tag, label=f"   {base_label} ")
 
@@ -1108,6 +1110,7 @@ def build_tactical_surface():
     dpg.bind_theme(gtheme)
 
     # ── TAB ANIMATION THEMES ────────────────────────────────────────────
+    # for the sidebar ui tabs animation shit
     with dpg.theme(tag="theme_tab_active"):
         with dpg.theme_component(dpg.mvButton):
             dpg.add_theme_color(dpg.mvThemeCol_Button, (45, 30, 65, 255))        # Deep purple backdrop
