@@ -14,6 +14,10 @@ Originally configured for the specific frame pacing and recoil mechanics of *The
  [![xp54](images/xp54.png)]()xp54 @25m
 
  [![Alt Text](images/lewis.png)]() lewis @20m
+ 
+
+[![p90 script on](images/p90_ON.gif)]()
+[![p90 script off](images/p90_OFF.gif)]()
 
 
 ## Prerequisites & Initial Provisioning
