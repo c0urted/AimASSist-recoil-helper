@@ -15,9 +15,7 @@ Originally configured for the specific frame pacing and recoil mechanics of *The
 
  [![Alt Text](images/lewis.png)]() lewis @20m
  
-
-[![p90 script on](images/p90_ON.gif)]()
-[![p90 script off](images/p90_OFF.gif)]()
+ [![p90 script on](images/p90_ON.gif)]()
 
 
 ## Prerequisites & Initial Provisioning
