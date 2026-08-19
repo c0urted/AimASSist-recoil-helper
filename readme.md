@@ -6,6 +6,9 @@ By offloading the entire execution environment, configuration tables, and input 
 
 Originally configured for the specific frame pacing and recoil mechanics of *The Finals*, the software layer is built using an open device abstraction layer, allowing seamless adaptability for any competitive first-person shooter environment.
 
+> [!IMPORTANT]
+> The finals is filled with cheats so you might as well join in. Huge shoutout to the "pillars of the finals community" and **"Embark Partners"** who cheat & stream on twitch with a dma setup @lycommit and his cheater trio stack. larp harder loser! dia+ is like half cheaters LMAO
+
 ---
 ### GUI Design
  [![Alt Text](images/GUI.png)]()
@@ -36,7 +39,7 @@ pip install dearpygui keyboard
 To ensure proper workspace linkage, the native target link-layer module corresponding to your network hardware (`kmNet`) must reside directly within the immediate directory structure:
 
 ```
-|Recoil_processor| priv cuz im mean lol
+|Recoil_processor| 
 ├── run_extractor.py # AiO tool for generating recoil patterns
 ├── inputs/image.png
 ├── outputs/weaponname_profile.txt
@@ -77,7 +80,7 @@ To ensure proper workspace linkage, the native target link-layer module correspo
 ### How Behavioral AI Works
 
 * **Mouse Biometrics:** The AI processes raw mouse coordinates to analyze velocity, acceleration curves, and microscopic hand tremors. It looks for natural physiological fluctuations caused by human muscle fatigue or reaction lag.
-* **Keystroke Dynamics:** It monitors the exact millisecond hold-times of keys and the timing gaps between inputs to detect unnatural consistency.
+* **Keystroke Dynamics:** It monitors the exact millisecond hold-times of keys and the timing gaps between inputs to detect unnatural consistency. (mouse clicks not being random will ban u within 1-2 games. mouse move is fine)
 * **Pattern Profiling:** The platform establishes a baseline behavioral model for your account. If your mouse trajectories suddenly switch to mathematically rigid linear curves, the cloud engine flags the inputs as automated anomalies.
 
 ### Impact on Hardware Emulation
